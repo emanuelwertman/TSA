@@ -1,32 +1,15 @@
-from gpiozero import Motor, PWMOutputDevice
+from gpiozero import Motor, PMOutputDevice
 from time import sleep
 
-# Pump on OUT1/OUT2
-pump = Motor(forward=5, backward=6)
-pump_enable = PWMOutputDevice(12)
+pump = Motor(forward=20, backward=21)
+enb = PWMOutputDevice(13)
 
-# TT Motor on OUT3/OUT4
-tt_motor = Motor(forward=20, backward=21)
-tt_enable = PWMOutputDevice(13)
-
-print("Starting")
-
-# Enable channels
-pump_enable.value = 1.0
-tt_enable.value = 0.4
-
-# Start motors
+print("Pump On")
+enb.value = 1.0
 pump.forward()
-tt_motor.forward()
 
-sleep(5)
+sleep(15)
 
-# Stop motors
 pump.stop()
-tt_motor.stop()
-
-# Disable channels
-pump_enable.value = 0
-tt_enable.value = 0
-
+enb.value = 0
 print("Done")

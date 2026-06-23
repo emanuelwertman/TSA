@@ -1,31 +1,43 @@
-import gpiod
+import RPi.GPIO as GPIO
 from time import sleep
 
-IN1_PIN = 5
-IN2_PIN = 6
-ENA_PIN = 12
+# Use physical Pin numbers (BOARD) or Broadcom GPIO numbers (BCM)
+# Based on your pinout, we will use BCM numbering:
+# GPIO5  -> IN1 (Pin 29)
+# GPIO6  -> IN2 (Pin 31)
+# GPIO12 -> ENA (Pin 32)
 
-print("Pump On")
+IN1 = 5
+IN2 = 6
+ENA = 12
 
-# Open the GPIO chip
-chip = gpiod.Chip('gpiochip0')
+# Setup GPIO mode
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(IN1, GPIO.OUT)
+GPIO.setup(IN2, GPIO.OUT)
+GPIO.setup(ENA, GPIO.OUT)
 
-# Get the lines for our pins
-lines = chip.get_lines([IN1_PIN, IN2_PIN, ENA_PIN])
-
-# Request the lines as outputs
-lines.request(consumer="pump-control", type=gpiod.LINE_REQ_DIR_OUT)
+# Initialize PWM on ENA pin at 100Hz frequency
+pwm = GPIO.PWM(ENA, 100)
+pwm.start(0)  # Start with 0% duty cycle (Off)
 
 try:
-    # Set IN1 to High (1), IN2 to Low (0) for forward
-    # Set ENA to High (1) to enable the motor driver channel
-    lines.set_values([1, 0, 1])
+    print("Pump On")
     
+    # Set the speed to 100% (Duty cycle ranges from 0.0 to 100.0 in RPi.GPIO)
+    pwm.ChangeDutyCycle(100)
+    
+    # Establish direction: IN1 High and IN2 Low for forward
+    GPIO.output(IN1, GPIO.HIGH)
+    GPIO.output(IN2, GPIO.LOW)
+    
+    # Run for 15 seconds
     sleep(15)
 
 finally:
-    # Turn everything off when done
+    # Stop the pump and clean up the pins safely
     print("Done")
-    lines.set_values([0, 0, 0])
-    lines.release()
-    chip.close()
+    pwm.stop()
+    GPIO.output(IN1, GPIO.LOW)
+    GPIO.output(IN2, GPIO.LOW)
+    GPIO.cleanup()

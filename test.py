@@ -1,43 +1,18 @@
-import RPi.GPIO as GPIO
+from gpiozero import Motor, PWMOutputDevice
 from time import sleep
 
-# Use physical Pin numbers (BOARD) or Broadcom GPIO numbers (BCM)
-# Based on your pinout, we will use BCM numbering:
-# GPIO5  -> IN1 (Pin 29)
-# GPIO6  -> IN2 (Pin 31)
-# GPIO12 -> ENA (Pin 32)
+# Pump on OUT1/OUT2
+pump = Motor(forward=5, backward=6)
+pump_enable = PWMOutputDevice(12)
 
-IN1 = 5
-IN2 = 6
-ENA = 12
+print("Starting pump")
 
-# Setup GPIO mode
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(IN1, GPIO.OUT)
-GPIO.setup(IN2, GPIO.OUT)
-GPIO.setup(ENA, GPIO.OUT)
+pump_enable.value = 1.0
+pump.forward()
 
-# Initialize PWM on ENA pin at 100Hz frequency
-pwm = GPIO.PWM(ENA, 100)
-pwm.start(0)  # Start with 0% duty cycle (Off)
+sleep(5)
 
-try:
-    print("Pump On")
-    
-    # Set the speed to 100% (Duty cycle ranges from 0.0 to 100.0 in RPi.GPIO)
-    pwm.ChangeDutyCycle(100)
-    
-    # Establish direction: IN1 High and IN2 Low for forward
-    GPIO.output(IN1, GPIO.HIGH)
-    GPIO.output(IN2, GPIO.LOW)
-    
-    # Run for 15 seconds
-    sleep(15)
+pump.stop()
+pump_enable.value = 0
 
-finally:
-    # Stop the pump and clean up the pins safely
-    print("Done")
-    pwm.stop()
-    GPIO.output(IN1, GPIO.LOW)
-    GPIO.output(IN2, GPIO.LOW)
-    GPIO.cleanup()
+print("Pump test complete")

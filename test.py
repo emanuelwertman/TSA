@@ -1,4 +1,4 @@
-from gpiozero import Motor, PMOutputDevice
+from gpiozero import Motor, PWMOutputDevice
 from time import sleep
 
 pump = Motor(forward=20, backward=21)

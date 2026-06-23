@@ -7,18 +7,18 @@ from time import sleep
 # GPIO6  -> IN2 (Pin 31)
 # GPIO12 -> ENA (Pin 32)
 
-IN1 = 5
-IN2 = 6
-ENA = 12
+IN1 = 29
+IN2 = 31
+ENA = 32
 
 # Setup GPIO mode
-GPIO.setmode(GPIO.BCM)
+GPIO.setmode(GPIO.BOARD)
 GPIO.setup(IN1, GPIO.OUT)
 GPIO.setup(IN2, GPIO.OUT)
 GPIO.setup(ENA, GPIO.OUT)
 
 # Initialize PWM on ENA pin at 100Hz frequency
-pwm = GPIO.PWM(ENA, 100)
+pwm = GPIO.PWM(ENA, 1000)
 pwm.start(0)  # Start with 0% duty cycle (Off)
 
 try:

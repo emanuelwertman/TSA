@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Europa Life-Detection Lander</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     DESIGN TOKENS  —  Europa: bright salty ice, reddish lineae
+     cracks, dark subsurface ocean, mission-telemetry HUD.
+     Tuned for a 1024x600 landscape kiosk display.
+     ============================================================ */
+  :root {
+    --space:      #060a14;
+    --space-2:    #0b1322;
+    --ice-light:  #dbe7f3;
+    --ice-mid:    #93b1cf;
+    --ice-deep:   #44617f;
+    --lineae:     #c47a5a;   /* Europa's rust-coloured surface cracks */
+    --water:      #36bffb;
+    --water-deep: #0d6e88;
+    --bio:        #6ee7a8;   /* bioluminescence = life signature      */
+    --heat:       #ff8a3c;   /* heated drill tip                      */
+    --metal:      #9fb4cc;
+    --amber:      #f4b740;   /* telemetry accent                      */
+    --ink:        #eaf2fb;
+    --muted:      #8095af;
+    --line:       rgba(255,255,255,.10);
+    --line-2:     rgba(255,255,255,.06);
+    --panel:      rgba(13,22,40,.72);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background:
+      radial-gradient(140% 100% at 70% -20%, #0c1a2e 0%, #05080f 55%, #03050a 100%);
+    color: var(--ink);
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    height: 100dvh;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+  }
+
+  /* ---- scale-to-fit wrapper: locks the design at 1024x600 and
+         scales it down (never up past 1) to fit any viewport ---- */
+  .fit { transform-origin: center center; }
+
+  /* ============================================================
+     KIOSK  —  fixed 1024x600 landscape console, two columns
+     ============================================================ */
+  .kiosk {
+    width: 1024px;
+    height: 600px;
+    display: grid;
+    grid-template-columns: 1fr 384px;
+    background: linear-gradient(180deg, var(--space-2), #04070e);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 50px 130px -40px rgba(0,0,0,.85),
+      inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  /* hairline frame inside the bezel */
+  .kiosk::after {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    border: 1px solid var(--line-2);
+    border-radius: 12px;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  /* ============================================================
+     LEFT  —  the scene
+     ============================================================ */
+  .scene-col {
+    position: relative;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 95% at 58% -8%, #102540 0%, #08111f 55%, #05080f 100%);
+  }
+  /* faint engineering grid + grain over the scene */
+  .scene-col::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(147,177,207,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(147,177,207,.05) 1px, transparent 1px);
+    background-size: 34px 34px;
+    mask-image: radial-gradient(100% 80% at 55% 30%, #000 35%, transparent 85%);
+    pointer-events: none;
+  }
+  /* vignette for depth */
+  .scene-col::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 100% at 50% 40%, transparent 55%, rgba(0,0,0,.55) 100%);
+    pointer-events: none;
+  }
+
+  .stage {
+    position: relative;
+    height: 100%;
+    aspect-ratio: 400 / 620;
+    z-index: 1;
+  }
+  svg { display: block; width: 100%; height: 100%; shape-rendering: geometricPrecision; text-rendering: geometricPrecision; }
+
+  /* small phase tag overlaid on the scene */
+  .scene-tag {
+    position: absolute;
+    top: 16px; left: 18px;
+    z-index: 3;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: .18em;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+  .scene-tag .rec {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--lineae);
+    box-shadow: 0 0 8px var(--lineae);
+    animation: blink 1.4s steps(2, jump-none) infinite;
+  }
+
+  /* corner brackets, classic viewfinder framing */
+  .brackets { position: absolute; inset: 14px; z-index: 3; pointer-events: none; }
+  .brackets i {
+    position: absolute; width: 18px; height: 18px;
+    border: 1px solid rgba(147,177,207,.35);
+  }
+  .brackets i:nth-child(1){ top:0; left:0; border-right:0; border-bottom:0; }
+  .brackets i:nth-child(2){ top:0; right:0; border-left:0; border-bottom:0; }
+  .brackets i:nth-child(3){ bottom:0; left:0; border-right:0; border-top:0; }
+  .brackets i:nth-child(4){ bottom:0; right:0; border-left:0; border-top:0; }
+
+  /* ============================================================
+     RIGHT  —  mission HUD panel
+     ============================================================ */
+  .panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 26px 28px 24px;
+    border-left: 1px solid var(--line);
+    background:
+      linear-gradient(180deg, rgba(13,22,40,.55), rgba(6,10,20,.65));
+  }
+  /* thin accent rail down the inside edge */
+  .panel::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 26px; bottom: 24px;
+    width: 2px;
+    background: linear-gradient(180deg, transparent, var(--water), transparent);
+    opacity: .5;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .mission {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: .16em;
+    color: var(--muted);
+    text-transform: uppercase;
+    line-height: 1.6;
+  }
+  .mission b { color: var(--ink); font-weight: 700; display: block; font-size: 13px; letter-spacing: .22em; }
+
+  .pill {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    padding: 6px 11px;
+    border-radius: 999px;
+    white-space: nowrap;
+    border: 1px solid currentColor;
+    transition: color .35s ease;
+    flex: none;
+  }
+  .pill::before {
+    content: "";
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    margin-right: 7px;
+    vertical-align: middle;
+    box-shadow: 0 0 8px currentColor;
+    animation: blink 1.4s steps(2, jump-none) infinite;
+  }
+  .pill[data-tone="amber"] { color: var(--amber); }
+  .pill[data-tone="cyan"]  { color: var(--water); }
+  .pill[data-tone="bio"]   { color: var(--bio);   }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  /* caption body */
+  .caption { padding-top: 22px; }
+  .idx {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 14px;
+    letter-spacing: .22em;
+    color: var(--water);
+    font-weight: 700;
+  }
+  .caption h1 {
+    font-size: 33px;
+    font-weight: 600;
+    margin: 12px 0 16px;
+    letter-spacing: -.015em;
+    line-height: 1.12;
+    min-height: 44px;
+  }
+  .caption p {
+    font-size: 17px;
+    line-height: 1.6;
+    color: #c2d3e6;
+    margin: 0;
+  }
+
+  /* foot: progress + dots + transport */
+  .foot { margin-top: auto; padding-top: 18px; }
+  .progress {
+    height: 3px;
+    border-radius: 3px;
+    background: rgba(255,255,255,.08);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .progress i {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--water), var(--bio));
+    box-shadow: 0 0 10px var(--water);
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .dots { display: flex; gap: 7px; flex-wrap: wrap; max-width: 170px; }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    border: 0; padding: 0;
+    background: rgba(255,255,255,.16);
+    cursor: pointer;
+    transition: background .25s ease, transform .25s ease, box-shadow .25s ease;
+  }
+  .dot[aria-current="true"] {
+    background: var(--water);
+    transform: scale(1.4);
+    box-shadow: 0 0 10px var(--water);
+  }
+  .dot:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+  .btns { display: flex; gap: 8px; }
+  .btn {
+    font-family: "JetBrains Mono", monospace;
+    color: var(--ink);
+    background: rgba(255,255,255,.05);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    width: 40px; height: 38px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background .2s ease, border-color .2s ease, opacity .2s ease;
+  }
+  .btn:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.24); }
+  .btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .btn.primary { border-color: rgba(54,191,251,.5); background: rgba(54,191,251,.12); }
+  .btn.primary:hover { background: rgba(54,191,251,.2); }
+  .btn svg { width: 16px; height: 16px; }
+  .btn .ic-pause { display: none; }
+  .btn.is-playing .ic-play  { display: none; }
+  .btn.is-playing .ic-pause { display: block; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pill::before, .rec { animation: none; }
+    .ambient { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="fit" id="fit">
+    <main class="kiosk" aria-label="Europa life-detection lander mission animation">
+
+      <!-- ============ LEFT: SCENE ============ -->
+      <section class="scene-col">
+        <div class="scene-tag" id="sceneTag">
+          <span class="rec"></span>
+          <span id="sceneTagText">ORBITAL VIEW</span>
+        </div>
+        <div class="brackets"><i></i><i></i><i></i><i></i></div>
+
+        <div class="stage">
+          <svg id="scene" viewBox="0 0 400 620" role="img"
+               aria-label="A penetrator probe melts into Europa's ice, samples meltwater on a microfluidic chip, and transmits the result home">
+            <defs>
+              <linearGradient id="gIce" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="var(--ice-light)" stop-opacity=".95"/>
+                <stop offset="1" stop-color="var(--ice-deep)"  stop-opacity=".92"/>
+              </linearGradient>
+              <linearGradient id="gOcean" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="var(--water)"      stop-opacity=".5"/>
+                <stop offset="1" stop-color="var(--water-deep)" stop-opacity=".92"/>
+              </linearGradient>
+              <radialGradient id="gJup" cx="50%" cy="50%" r="50%">
+                <stop offset="0"  stop-color="#e7c39c"/>
+                <stop offset=".6" stop-color="#c79468"/>
+                <stop offset="1"  stop-color="#7c5436"/>
+              </radialGradient>
+              <radialGradient id="gEuropa" cx="38%" cy="34%" r="72%">
+                <stop offset="0"   stop-color="#f2f7fc"/>
+                <stop offset=".55" stop-color="#bcd0e4"/>
+                <stop offset="1"   stop-color="#4f6a86"/>
+              </radialGradient>
+              <radialGradient id="gThr" cx="50%" cy="0%" r="100%">
+                <stop offset="0"  stop-color="#fff6e6"/>
+                <stop offset=".4" stop-color="var(--heat)"/>
+                <stop offset="1"  stop-color="var(--heat)" stop-opacity="0"/>
+              </radialGradient>
+              <radialGradient id="gHeat" cx="50%" cy="50%" r="50%">
+                <stop offset="0"  stop-color="#fff1da"/>
+                <stop offset=".45" stop-color="var(--heat)"/>
+                <stop offset="1"  stop-color="var(--heat)" stop-opacity="0"/>
+              </radialGradient>
+              <radialGradient id="gBio" cx="50%" cy="50%" r="50%">
+                <stop offset="0"  stop-color="#d6ffe9"/>
+                <stop offset=".4" stop-color="var(--bio)"/>
+                <stop offset="1"  stop-color="var(--bio)" stop-opacity="0"/>
+              </radialGradient>
+              <!-- cylindrical metal sheen for probe / lander / penetrator bodies -->
+              <linearGradient id="gBody" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0"   stop-color="#0e1c30"/>
+                <stop offset=".5"  stop-color="#274163"/>
+                <stop offset="1"   stop-color="#0e1c30"/>
+              </linearGradient>
+              <!-- soft drop shadow to lift the hardware off the ice -->
+              <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+                <feDropShadow dx="0" dy="1.6" stdDeviation="2" flood-color="#020812" flood-opacity=".5"/>
+              </filter>
+              <clipPath id="europaClip"><circle cx="200" cy="356" r="150"/></clipPath>
+              <clipPath id="chipClip"><rect x="44" y="196" width="312" height="210" rx="10"/></clipPath>
+            </defs>
+
+            <!-- shared starfield (visible in orbital + surface skies) -->
+            <g id="stars" opacity=".75">
+              <circle class="ambient star" cx="60"  cy="60"  r="1.1" fill="#fff"/>
+              <circle class="ambient star" cx="150" cy="34"  r="1.3" fill="#fff" style="animation-delay:.6s"/>
+              <circle class="ambient star" cx="250" cy="70"  r="1"   fill="#fff" style="animation-delay:1.1s"/>
+              <circle class="ambient star" cx="340" cy="48"  r="1.2" fill="#fff" style="animation-delay:.3s"/>
+              <circle class="ambient star" cx="100" cy="110" r="1"   fill="#fff" style="animation-delay:.9s"/>
+              <circle class="ambient star" cx="300" cy="120" r=".9"  fill="#fff" style="animation-delay:1.4s"/>
+              <circle class="ambient star" cx="200" cy="20"  r="1"   fill="#fff" style="animation-delay:.2s"/>
+              <circle class="ambient star" cx="370" cy="92"  r="1"   fill="#fff" style="animation-delay:1.7s"/>
+            </g>
+
+            <!-- ============================================================
+                 WORLD 1  —  ORBITAL ESTABLISHING SHOT
+                 Jupiter looming, Europa centred, ice/ocean cutaway
+                 ============================================================ -->
+            <g id="worldOrbital">
+              <!-- Jupiter, glowing, partly off the top-right -->
+              <circle cx="332" cy="-26" r="250" fill="url(#gJup)" opacity=".16"/>
+              <circle cx="332" cy="-26" r="176" fill="url(#gJup)"/>
+              <g opacity=".55" stroke-linecap="round">
+                <path d="M180,70 a176,176 0 0,1 304,0"  stroke="#6e4527" stroke-width="7" fill="none"/>
+                <path d="M168,108 a176,176 0 0,1 328,0" stroke="#9a6a42" stroke-width="11" fill="none" opacity=".7"/>
+                <path d="M176,150 a176,176 0 0,1 312,0" stroke="#6e4527" stroke-width="6" fill="none" opacity=".6"/>
+                <ellipse cx="276" cy="92" rx="22" ry="13" fill="#a8502f" opacity=".5"/>
+              </g>
+
+              <!-- Europa globe -->
+              <circle cx="200" cy="356" r="150" fill="url(#gEuropa)"/>
+              <g clip-path="url(#europaClip)">
+                <!-- terminator shadow on the far side -->
+                <ellipse cx="296" cy="392" rx="170" ry="180" fill="#0a1422" opacity=".42"/>
+                <!-- reddish-brown lineae cracks -->
+                <g stroke="var(--lineae)" fill="none" opacity=".7">
+                  <path d="M60,300 C150,290 250,330 360,312" stroke-width="2"/>
+                  <path d="M70,360 C170,372 260,344 350,372" stroke-width="1.6" opacity=".8"/>
+                  <path d="M80,420 C160,402 250,438 330,416" stroke-width="1.4" opacity=".7"/>
+                  <path d="M150,236 L176,470" stroke-width="1.3" opacity=".55"/>
+                  <path d="M250,238 L232,468" stroke-width="1.1" opacity=".5"/>
+                  <path d="M110,250 C140,330 120,400 150,460" stroke-width="1" opacity=".5"/>
+                </g>
+              </g>
+
+              <!-- ice-shell / ocean cutaway wedge at the top of the globe -->
+              <g id="cutaway">
+                <path d="M200,356 L163.7,210.4 A150,150 0 0,1 236.3,210.4 Z"
+                      fill="#0a1626" opacity=".9"/>
+                <!-- ocean core revealed beneath the thin ice rim -->
+                <path d="M200,356 L168,228 A132,132 0 0,1 232,228 Z" fill="url(#gOcean)"/>
+                <!-- ice/ocean boundary -->
+                <path d="M168,228 A132,132 0 0,1 232,228" fill="none"
+                      stroke="var(--ice-light)" stroke-width="1.2" stroke-dasharray="3 3" opacity=".7"/>
+                <!-- wedge edges -->
+                <path d="M200,356 L163.7,210.4 M200,356 L236.3,210.4"
+                      fill="none" stroke="var(--ice-mid)" stroke-width=".8" opacity=".5"/>
+                <text x="200" y="224" text-anchor="middle" font-family="JetBrains Mono, monospace"
+                      font-size="7.5" letter-spacing="1.5" fill="#cfe6f5">ICE SHELL 15–25 km</text>
+                <text x="200" y="300" text-anchor="middle" font-family="JetBrains Mono, monospace"
+                      font-size="8" letter-spacing="2" fill="#bfefff" opacity=".85">GLOBAL OCEAN</text>
+              </g>
+
+              <text x="200" y="540" text-anchor="middle" font-family="JetBrains Mono, monospace"
+                    font-size="9" letter-spacing="3" fill="var(--muted)">EUROPA · JUPITER II</text>
+            </g>
+
+            <!-- ============================================================
+                 WORLD 2  —  ICE-SHELL CROSS-SECTION (surface)
+                 lander, penetrator deployment, drilling, transmission
+                 ============================================================ -->
+            <g id="worldSurface">
+              <!-- sky band -->
+              <rect x="0" y="0" width="400" height="165" fill="var(--space)"/>
+              <!-- faint Jupiter limb upper-right -->
+              <circle cx="420" cy="6" r="120" fill="url(#gJup)" opacity=".18"/>
+              <!-- relay / transmission target, upper-left -->
+              <g id="target" opacity=".95">
+                <circle cx="52" cy="52" r="9" fill="#2b6fd6"/>
+                <path d="M46,49 q4,-3 8,1 q3,3 -1,5 q-5,2 -7,-3z" fill="#4caf72" opacity=".9"/>
+                <text x="52" y="76" text-anchor="middle" font-family="JetBrains Mono, monospace"
+                      font-size="8" letter-spacing="1.5" fill="var(--muted)">RELAY</text>
+              </g>
+
+              <!-- ice shell -->
+              <rect x="0" y="165" width="400" height="395" fill="url(#gIce)"/>
+              <!-- surface terrain line -->
+              <path d="M0,165 L70,163 L150,166 L230,162 L320,165 L400,164"
+                    stroke="var(--ice-light)" stroke-width="2" fill="none" opacity=".8"/>
+              <!-- reddish lineae + ice banding -->
+              <g stroke="var(--lineae)" fill="none" opacity=".55">
+                <path d="M-10,196 C90,190 150,206 260,198 C330,194 380,204 410,200" stroke-width="1.4"/>
+                <path d="M-10,250 C120,244 220,258 410,248" stroke-width="1" opacity=".6"/>
+              </g>
+              <g stroke="var(--ice-mid)" opacity=".15">
+                <line x1="0" y1="300" x2="400" y2="300"/>
+                <line x1="0" y1="380" x2="400" y2="380"/>
+                <line x1="0" y1="460" x2="400" y2="460"/>
+              </g>
+              <!-- deep ocean hint at the very bottom -->
+              <rect x="0" y="560" width="400" height="60" fill="url(#gOcean)"/>
+              <rect id="oceanGlow" class="ambient" x="0" y="556" width="400" height="10" fill="var(--water)" opacity=".45"/>
+              <text x="200" y="598" text-anchor="middle" font-family="JetBrains Mono, monospace"
+                    font-size="8" letter-spacing="3" fill="#bfefff" opacity=".5">OCEAN ↓ (km below)</text>
+
+              <!-- depth gauge -->
+              <g font-family="JetBrains Mono, monospace" font-size="7" fill="var(--muted)">
+                <line x1="300" y1="210" x2="300" y2="400" stroke="var(--line)" stroke-width="2"/>
+                <line x1="296" y1="210" x2="304" y2="210" stroke="var(--muted)"/><text x="293" y="213" text-anchor="end">0</text>
+                <line x1="296" y1="305" x2="304" y2="305" stroke="var(--muted)"/>
+                <line x1="296" y1="400" x2="304" y2="400" stroke="var(--muted)"/>
+                <g id="gaugeMarker"><path d="M300,210 l9,-4 l0,8 z" fill="var(--amber)"/></g>
+              </g>
+
+              <!-- melt channel left behind the descending probe -->
+              <rect id="meltChannel" x="196" y="165" width="8" height="0" rx="4"
+                    fill="var(--water)" opacity=".4"/>
+
+              <!-- hero penetrator probe (revealed in stage 3) -->
+              <g id="probe" filter="url(#soft)">
+                <g id="probeBody">
+                  <ellipse id="meltPool" cx="200" cy="205" rx="17" ry="6" fill="var(--water)" opacity=".0"/>
+                  <circle id="probeHeat" cx="200" cy="203" r="16" fill="url(#gHeat)" opacity="0"/>
+                  <rect x="193" y="161" width="14" height="38" rx="3" fill="url(#gBody)" stroke="var(--metal)" stroke-width="1.3"/>
+                  <rect id="intakePort" x="196" y="186" width="8" height="4" rx="1" fill="#0c1828" stroke="var(--water)" stroke-width=".8"/>
+                  <polygon id="probeBit" points="193,199 207,199 200,212" fill="var(--metal)" stroke-linejoin="round"/>
+                  <!-- fins -->
+                  <path d="M193,164 L186,158 M207,164 L214,158" stroke="var(--metal)" stroke-width="1.6" fill="none"/>
+                  <circle id="probeUplink" cx="200" cy="164" r="3" fill="var(--bio)" opacity="0"/>
+                </g>
+              </g>
+
+              <!-- three deployment penetrators (stage 2) -->
+              <g id="pen1" class="pen" filter="url(#soft)">
+                <rect x="116" y="178" width="8" height="20" rx="2" fill="url(#gBody)" stroke="var(--metal)" stroke-width="1"/>
+                <polygon points="116,198 124,198 120,208" fill="var(--metal)" stroke-linejoin="round"/>
+                <path d="M116,180 L111,175 M124,180 L129,175" stroke="var(--metal)" stroke-width="1.2"/>
+              </g>
+              <g id="pen2" class="pen" filter="url(#soft)">
+                <rect x="196" y="178" width="8" height="20" rx="2" fill="url(#gBody)" stroke="var(--metal)" stroke-width="1"/>
+                <polygon points="196,198 204,198 200,208" fill="var(--metal)" stroke-linejoin="round"/>
+                <path d="M196,180 L191,175 M204,180 L209,175" stroke="var(--metal)" stroke-width="1.2"/>
+              </g>
+              <g id="pen3" class="pen" filter="url(#soft)">
+                <rect x="276" y="178" width="8" height="20" rx="2" fill="url(#gBody)" stroke="var(--metal)" stroke-width="1"/>
+                <polygon points="276,198 284,198 280,208" fill="var(--metal)" stroke-linejoin="round"/>
+                <path d="M276,180 L271,175 M284,180 L289,175" stroke="var(--metal)" stroke-width="1.2"/>
+              </g>
+              <!-- impact puffs -->
+              <circle id="puff1" cx="120" cy="190" r="3" fill="none" stroke="var(--ice-light)" stroke-width="1.5" opacity="0"/>
+              <circle id="puff2" cx="200" cy="190" r="3" fill="none" stroke="var(--ice-light)" stroke-width="1.5" opacity="0"/>
+              <circle id="puff3" cx="280" cy="190" r="3" fill="none" stroke="var(--ice-light)" stroke-width="1.5" opacity="0"/>
+
+              <!-- power & data tether linking the lander to the descending probe -->
+              <g id="tether">
+                <line id="tetherCore" x1="200" y1="156" x2="200" y2="161"
+                      stroke="var(--ice-deep)" stroke-width="2.4" stroke-linecap="round" opacity=".55"/>
+                <line id="tetherData" class="ambient" x1="200" y1="156" x2="200" y2="161"
+                      stroke="var(--amber)" stroke-width="1.2" stroke-dasharray="3 5"
+                      stroke-linecap="round" opacity=".9"/>
+              </g>
+
+              <!-- surface lander -->
+              <g id="lander" filter="url(#soft)">
+                <g stroke="var(--metal)" stroke-width="2.2" stroke-linecap="round" fill="none">
+                  <path d="M176,150 L150,164"/><path d="M142,164 h16"/>
+                  <path d="M224,150 L250,164"/><path d="M242,164 h16"/>
+                </g>
+                <rect x="170" y="126" width="60" height="26" rx="4" fill="url(#gBody)" stroke="var(--metal)" stroke-width="1.4"/>
+                <rect x="160" y="117" width="80" height="11" rx="3" fill="#1d3148" stroke="var(--metal)" stroke-width="1.1"/>
+                <rect id="bay" x="192" y="150" width="16" height="7" rx="2" fill="#0f1c2e" stroke="var(--metal)" stroke-width="1.1"/>
+                <g id="antenna">
+                  <line x1="232" y1="117" x2="240" y2="96" stroke="var(--metal)" stroke-width="1.5"/>
+                  <ellipse cx="242" cy="92" rx="10" ry="5" fill="none" stroke="var(--metal)" stroke-width="1.5" transform="rotate(-24 242 92)"/>
+                </g>
+              </g>
+
+              <!-- transmission: signal dot + beam waves toward the relay -->
+              <circle id="signalSurface" cx="200" cy="164" r="3.5" fill="var(--bio)" opacity="0"/>
+              <g fill="none" stroke="var(--bio)" stroke-width="2">
+                <path id="beam1" d="M230,90 a16,16 0 0,1 -22,-2" opacity="0"/>
+                <path id="beam2" d="M236,98 a25,25 0 0,1 -34,-4" opacity="0"/>
+                <path id="beam3" d="M242,106 a34,34 0 0,1 -46,-6" opacity="0"/>
+              </g>
+
+              <!-- loop cue: resume descent at the next depth -->
+              <g id="loopCue" opacity="0">
+                <path d="M214,430 v22" stroke="var(--amber)" stroke-width="1.6" fill="none"/>
+                <path d="M210,446 l4,7 l4,-7 z" fill="var(--amber)"/>
+                <text x="222" y="446" font-family="JetBrains Mono, monospace" font-size="8"
+                      letter-spacing="1.5" fill="var(--amber)">REPEAT · NEXT DEPTH</text>
+              </g>
+            </g>
+
+            <!-- ============================================================
+                 WORLD 3  —  MICROFLUIDIC CHIP SCHEMATIC
+                 intake → nanofilter → luciferase chamber → photodiodes → ion read
+                 ============================================================ -->
+            <g id="worldChip">
+              <text x="48" y="184" font-family="JetBrains Mono, monospace" font-size="9"
+                    letter-spacing="1.6" fill="var(--muted)">MICROFLUIDIC CHIP · 45 × 30 mm</text>
+              <rect id="chipBoard" x="44" y="196" width="312" height="210" rx="10"
+                    fill="#0a1726" stroke="var(--water)" stroke-width="1.3" opacity=".95" filter="url(#soft)"/>
+
+              <!-- optional: drop a real chip photo here later (set href) -->
+              <image id="chipPhoto" href="" x="44" y="196" width="312" height="210"
+                     clip-path="url(#chipClip)" preserveAspectRatio="xMidYMid slice" opacity="0"/>
+
+              <!-- intake port -->
+              <polygon points="50,310 64,304 64,316" fill="var(--water)" opacity=".8"/>
+              <circle cx="68" cy="310" r="4" fill="none" stroke="var(--water)" stroke-width="1.2"/>
+              <text x="50" y="338" font-family="JetBrains Mono, monospace" font-size="6.5" letter-spacing="1" fill="var(--muted)">0.5 mm INTAKE</text>
+
+              <!-- channel baseline -->
+              <path d="M68,310 H300" stroke="var(--ice-mid)" stroke-width="2.4" fill="none" opacity=".35"/>
+              <path id="chipFlow" d="M68,310 H210" stroke="var(--water)" stroke-width="2.6"
+                    stroke-linecap="round" fill="none" opacity="0"/>
+              <circle id="chipDrop" cx="68" cy="310" r="4.5" fill="var(--water)" opacity="0"/>
+
+              <!-- nanofilter array -->
+              <g id="nanofilter">
+                <g stroke="var(--ice-mid)" stroke-width="1.4">
+                  <line x1="104" y1="300" x2="104" y2="320"/>
+                  <line x1="110" y1="300" x2="110" y2="320"/>
+                  <line x1="116" y1="300" x2="116" y2="320"/>
+                  <line x1="122" y1="300" x2="122" y2="320"/>
+                </g>
+                <text x="113" y="338" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6.5" letter-spacing="1" fill="var(--muted)">NANOFILTER</text>
+              </g>
+              <g id="debris" opacity="0">
+                <circle cx="100" cy="306" r="1.6" fill="var(--lineae)"/>
+                <circle cx="99"  cy="314" r="1.3" fill="var(--lineae)"/>
+                <circle cx="102" cy="311" r="1.1" fill="var(--lineae)"/>
+              </g>
+
+              <!-- routing valve -->
+              <g id="valve">
+                <rect x="153" y="303" width="14" height="14" rx="2" fill="#0f1c2e" stroke="var(--metal)" stroke-width="1.2" transform="rotate(45 160 310)"/>
+                <text x="160" y="290" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6.5" letter-spacing="1" fill="var(--muted)">VALVE</text>
+              </g>
+
+              <!-- photodiode array: six avalanche photodiodes above the chamber -->
+              <g id="pdArray">
+                <rect class="pd" x="181" y="246" width="8" height="13" rx="1.5" fill="#13243a" stroke="var(--metal)" stroke-width=".8"/>
+                <rect class="pd" x="192" y="246" width="8" height="13" rx="1.5" fill="#13243a" stroke="var(--metal)" stroke-width=".8"/>
+                <rect class="pd" x="203" y="246" width="8" height="13" rx="1.5" fill="#13243a" stroke="var(--metal)" stroke-width=".8"/>
+                <rect class="pd" x="214" y="246" width="8" height="13" rx="1.5" fill="#13243a" stroke="var(--metal)" stroke-width=".8"/>
+                <rect class="pd" x="225" y="246" width="8" height="13" rx="1.5" fill="#13243a" stroke="var(--metal)" stroke-width=".8"/>
+                <rect class="pd" x="236" y="246" width="8" height="13" rx="1.5" fill="#13243a" stroke="var(--metal)" stroke-width=".8"/>
+                <text x="212" y="240" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6.5" letter-spacing="1" fill="var(--muted)">6× AVALANCHE PHOTODIODE</text>
+              </g>
+              <!-- emitted photons (chamber → photodiodes) -->
+              <g id="photons" opacity="0" stroke="var(--bio)" stroke-width="1.2">
+                <line x1="205" y1="296" x2="200" y2="262"/>
+                <line x1="212" y1="298" x2="212" y2="262"/>
+                <line x1="219" y1="296" x2="224" y2="262"/>
+              </g>
+
+              <!-- luciferase reaction chamber -->
+              <circle id="chamberGlow" cx="212" cy="310" r="34" fill="url(#gBio)" opacity="0"/>
+              <rect id="chamber" x="186" y="284" width="52" height="52" rx="13"
+                    fill="#0c1c2e" stroke="var(--water)" stroke-width="1.4"/>
+              <text x="212" y="356" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6.5" letter-spacing="1" fill="var(--muted)">LUCIFERASE · 71 pL</text>
+
+              <!-- ion-concentration read-out -->
+              <g id="ionRead">
+                <rect x="268" y="290" width="80" height="40" rx="4" fill="#0c1c2e" stroke="var(--line)" stroke-width="1"/>
+                <polyline id="ionWave" points="272,310 284,310 292,298 300,322 308,304 316,316 324,310 344,310"
+                          fill="none" stroke="var(--amber)" stroke-width="1.4" opacity="0"/>
+                <text x="272" y="286" font-family="JetBrains Mono, monospace" font-size="6.5" letter-spacing="1" fill="var(--muted)">ION + SALINITY</text>
+              </g>
+
+              <!-- exit channel toward the antenna (used by the transmit pulse) -->
+              <path id="chipExitPath" d="M238,310 H300 V250 H352" fill="none"
+                    stroke="var(--ice-mid)" stroke-width="1.6" opacity=".25"/>
+              <circle id="chipSignal" cx="238" cy="310" r="4" fill="var(--bio)" opacity="0"/>
+
+              <!-- roaming highlight ring that points out each chip sub-step -->
+              <circle id="chipHighlight" cx="68" cy="310" r="10" fill="none"
+                      stroke="var(--amber)" stroke-width="1.5" opacity="0"/>
+            </g>
+          </svg>
+        </div>
+      </section>
+
+      <!-- ============ RIGHT: HUD PANEL ============ -->
+      <aside class="panel">
+        <div class="panel-head">
+          <div class="mission"><b>EUROPA</b> life-detection lander</div>
+          <div id="status" class="pill" data-tone="amber">STANDBY</div>
+        </div>
+
+        <div class="caption">
+          <div id="idx" class="idx">01 / 06</div>
+          <h1 id="title">Approaching Europa</h1>
+          <p id="desc"></p>
+        </div>
+
+        <div class="foot">
+          <div class="progress"><i id="progressBar"></i></div>
+          <div class="controls">
+            <div id="dots" class="dots" role="tablist" aria-label="Process steps"></div>
+            <div class="btns">
+              <button id="prev" class="btn" aria-label="Previous step">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <button id="playToggle" class="btn primary is-playing" aria-label="Pause">
+                <svg class="ic-play"  viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <svg class="ic-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+              </button>
+              <button id="next" class="btn" aria-label="Next step">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- ambient-only motion (independent of the timeline) -->
+  <style>
+    @keyframes twinkle { 0%,100%{opacity:.25} 50%{opacity:1} }
+    @keyframes oceanPulse { 0%,100%{opacity:.3} 50%{opacity:.65} }
+    @keyframes tetherFlow { to { stroke-dashoffset: -16; } }
+    .star { animation: twinkle 3.2s ease-in-out infinite; }
+    #oceanGlow { animation: oceanPulse 4s ease-in-out infinite; }
+    #tetherData { animation: tetherFlow 1s linear infinite; }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script>
+  /* =================================================================
+     EUROPA LANDER  —  1024x600 auto-running kiosk
+
+     Six-stage story, three layered "worlds" that cross-fade:
+       ORBITAL  → establishing shot (Jupiter, Europa, ice/ocean gap)
+       SURFACE  → cross-section (lander, penetrators, drilling, uplink)
+       CHIP     → microfluidic schematic (filter, luciferase, photodiodes)
+
+     Architecture: every step appends its tweens to ONE shared master
+     timeline, so cumulative state (drill depth, camera viewBox, fluid
+     fill, glow) stays correct whether you play straight through, scrub,
+     or jump between steps. An auto-run controller loops it forever.
+     ================================================================= */
+
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = id => document.getElementById(id);
+
+  // colours used inside tweens (gsap can't tween CSS var() values)
+  const C = { metal:'#9fb4cc', heat:'#ff8a3c', water:'#36bffb', bio:'#6ee7a8', amber:'#f4b740', dim:'#13243a' };
+
+  // probe / depth geometry (surface world)
+  const PX = 200, SURF_Y = 165;
+  const TIP_START = 205, TIP_END = 405, TIP_DEEP = 432;
+  const GAUGE_TOP = 210, GAUGE_BOT = 400;
+  const DEPTH_PER_PX = 1.1;            // metres of depth per svg pixel
+
+  // camera framings (kept at the scene's 400:620 aspect to avoid letterboxing)
+  const VIEW_FULL  = { x:0,   y:0,   w:400, h:620 };
+  const VIEW_TOP   = { x:108, y:120, w:184, h:285 };   // stage 1: zoom toward Europa's surface
+  const VIEW_PROBE = { x:118, y:150, w:184, h:285 };   // stage 3: push in on the hero probe
+  const VIEW_TIP   = { x:176, y:362, w:48,  h:74  };    // stage 4: punch through the probe tip
+  const VIEW_CHIP  = { x:39,  y:44,  w:320, h:496 };   // stages 4–5: hold close on the chip (≈1.25× bigger)
+
+  const TIME_SCALE = 0.5;  // <1 slows the whole sequence down (calm, deliberate pacing)
+  const LOOP_HOLD = 3.0;   // seconds held on the final frame before looping
+
+  // Real-world seconds for each stage — edit these to change individual stage pacing.
+  const STAGE1_SECS = 10;    // orbital approach and Europa zoom
+  const STAGE2_SECS = 11;   // penetrator deployment (minimum ~11 s due to animation overhead)
+  const STAGE3_SECS = 12;    // thermal drilling descent
+  const STAGE4_SECS = 12;    // sample intake and chip transition
+  const STAGE5_SECS = 12;   // on-chip analysis and life signature
+  const STAGE6_SECS = 12;   // data transmission and repeat
+
+  const els = {
+    scene:$('scene'),
+    gaugeMarker:$('gaugeMarker'),
+    probeBody:$('probeBody'), meltChannel:$('meltChannel'),
+    tetherCore:$('tetherCore'), tetherData:$('tetherData'),
+    chipFlow:$('chipFlow'), ionWave:$('ionWave'),
+    statusPill:$('status'), idx:$('idx'), title:$('title'), desc:$('desc'),
+    prev:$('prev'), next:$('next'), playToggle:$('playToggle'), dots:$('dots'),
+    progressBar:$('progressBar'),
+    sceneTag:$('sceneTag'), sceneTagText:$('sceneTagText'),
+    chipHighlight:$('chipHighlight'), chipPhoto:$('chipPhoto'),
+  };
+
+  const drillState = { tip: TIP_START };
+  const camState   = { ...VIEW_FULL };
+
+  // redraw probe + telemetry from a single source of truth
+  function renderDrill() {
+    const t = drillState.tip;
+    els.probeBody.setAttribute('transform', `translate(0, ${t - TIP_START})`);
+    els.meltChannel.setAttribute('height', Math.max(0, t - SURF_Y));
+    // stretch the power/data tether from the lander down to the probe's top
+    const probeTopY = 161 + (t - TIP_START);
+    els.tetherCore.setAttribute('y2', probeTopY);
+    els.tetherData.setAttribute('y2', probeTopY);
+    const gy = GAUGE_TOP + Math.min(1, Math.max(0,(t - TIP_START)) / (TIP_DEEP - TIP_START)) * (GAUGE_BOT - GAUGE_TOP);
+    els.gaugeMarker.setAttribute('transform', `translate(0, ${gy - GAUGE_TOP})`);
+  }
+
+  // redraw the camera (SVG viewBox) from camState
+  function renderView() {
+    els.scene.setAttribute('viewBox',
+      `${camState.x} ${camState.y} ${camState.w} ${camState.h}`);
+  }
+
+  function setStatus(text, tone) {
+    els.statusPill.textContent = text;
+    els.statusPill.dataset.tone = tone || 'amber';
+  }
+
+  /* ---- Raspberry Pi hardware bridge ----
+     Tells europa_lander_server.py which actuators should be live for the
+     stage currently on screen. Stage 3 (DRILLING) spins the TT motor;
+     stage 4 (INTAKE) runs the pump. Calls are de-duped so we only hit the
+     server when the desired state actually changes, and failures are
+     swallowed so the animation keeps running even with no Pi attached. */
+  let hwState = { motor:null, pump:null };
+  function setHardware(motorOn, pumpOn) {
+    if (motorOn === hwState.motor && pumpOn === hwState.pump) return;
+    hwState = { motor:motorOn, pump:pumpOn };
+    const q = `motor=${motorOn ? 'on' : 'off'}&pump=${pumpOn ? 'on' : 'off'}`;
+    fetch(`/hw?${q}`, { method:'GET', keepalive:true }).catch(() => {});
+  }
+  // failsafe: cut all actuators if the kiosk page is closed/reloaded mid-stage
+  window.addEventListener('pagehide', () => setHardware(false, false));
+
+  // move the roaming highlight ring to a chip feature
+  function highlightAt(cx, cy, r) {
+    els.chipHighlight.setAttribute('cx', cx);
+    els.chipHighlight.setAttribute('cy', cy);
+    els.chipHighlight.setAttribute('r',  r);
+  }
+
+  /* ---- initial scene state (before anything plays) ---- */
+  function initScene() {
+    renderDrill();
+    renderView();
+    gsap.set('#worldOrbital', { autoAlpha: 1 });
+    gsap.set(['#worldSurface', '#worldChip'], { autoAlpha: 0 });
+    gsap.set(['#probe','#probeHeat','#meltPool','#probeUplink','#meltChannel','#tether',
+              '#pen1','#pen2','#pen3','#puff1','#puff2','#puff3',
+              '#signalSurface','#beam1','#beam2','#beam3','#loopCue',
+              '#chipFlow','#chipDrop','#debris','#photons','#chamberGlow',
+              '#ionWave','#chipSignal','#chipHighlight'], { autoAlpha: 0 });
+    gsap.set('.pd', { fill: C.dim });
+    if (!els.chipPhoto.getAttribute('href')) els.chipPhoto.style.display = 'none';
+    // dash setup for the "flowing fluid" path
+    const len = els.chipFlow.getTotalLength();
+    els.chipFlow.style.strokeDasharray = len;
+    els.chipFlow.style.strokeDashoffset = len;
+    els.chipFlow.dataset.len = len;
+    // dash setup for the ion waveform draw-in
+    const wlen = els.ionWave.getTotalLength();
+    els.ionWave.style.strokeDasharray = wlen;
+    els.ionWave.style.strokeDashoffset = wlen;
+    els.ionWave.dataset.len = wlen;
+  }
+
+  // full reset (run at the top of stage 1 so loops start clean)
+  function resetState() {
+    drillState.tip = TIP_START;  renderDrill();
+    Object.assign(camState, VIEW_FULL); renderView();
+  }
+
+  /* =================================================================
+     STEPS
+     ================================================================= */
+  const STEPS = [
+    {
+      key:'s1', idx:'01', title:'Approaching Europa', status:'SURVEY', tone:'amber',
+      phase:'APPROACH', view:'orbital',
+      desc:'Europa holds a global subsurface ocean with more than twice the water of all Earth’s oceans, sealed beneath an ice shell 15–25 km thick. NASA’s Europa Clipper can only sense the moon remotely; it cannot directly sample the ocean or detect life. The challenge: reach and chemically analyze the water beneath the ice.',
+      build(tl) {
+        tl.call(resetState);
+        // restore world visibility for a clean loop
+        tl.set('#worldOrbital', { autoAlpha:1 });
+        tl.set(['#worldSurface','#worldChip'], { autoAlpha:0 });
+        tl.set(['#probe','#tether','#meltChannel','#loopCue','#signalSurface',
+                '#chipFlow','#chipDrop','#debris','#photons','#chamberGlow',
+                '#ionWave','#chipSignal','#chipHighlight','#probeUplink'], { autoAlpha:0 });
+        tl.set('#chipFlow', { strokeDashoffset:+els.chipFlow.dataset.len });
+        tl.set('#ionWave',  { strokeDashoffset:+els.ionWave.dataset.len });
+        tl.set('.pd', { fill:C.dim });
+        // slow drift-zoom toward the surface / cutaway
+        const dur1 = STAGE1_SECS * TIME_SCALE;
+        tl.fromTo('#worldOrbital', { scale:1, transformOrigin:'50% 60%' },
+                                   { scale:1.04, duration:dur1, ease:'sine.inOut' });
+        tl.to(camState, { ...VIEW_TOP, duration:dur1, ease:'sine.inOut',
+                          onUpdate:renderView }, '<');
+        tl.fromTo('#cutaway', { autoAlpha:.2 }, { autoAlpha:1, duration:dur1*0.35, ease:'power1.out' }, '<' + dur1*0.18);
+      }
+    },
+    {
+      key:'s2', idx:'02', title:'Penetrator deployment', status:'DEPLOY', tone:'amber',
+      phase:'DEPLOY', view:'surface',
+      desc:'A surface lander releases multiple compact penetrator probes across different regions at once. Each probe impacts and embeds into the upper ice layer, anchoring itself for descent. Distributing probes widens coverage and increases the odds of discovery.',
+      build(tl) {
+        // cross-fade orbital → surface, settle camera to full
+        tl.to('#worldOrbital', { autoAlpha:0, duration:.6 });
+        tl.fromTo('#worldSurface', { autoAlpha:0 }, { autoAlpha:1, duration:.6 }, '<');
+        tl.to(camState, { ...VIEW_FULL, duration:.8, ease:'power2.out', onUpdate:renderView }, '<');
+        // lander settles in
+        tl.fromTo('#lander', { y:-26, autoAlpha:0 }, { y:0, autoAlpha:1, duration:.5, ease:'power2.out' }, '<0.2');
+        // raw budget minus fixed overhead: fade+lander ~0.8 s, pen action ~3.75 s, dim ~0.8 s
+        const s2Raw  = STAGE2_SECS * TIME_SCALE;
+        const s2Hold = Math.max(0, s2Raw - 5.35);
+        const preHold   = s2Hold * 0.30;
+        const postHold  = s2Hold * 0.50;
+        const finalHold = s2Hold * 0.20;
+        // pre-deployment survey hold — lander scans terrain and acquires targets
+        tl.to({}, { duration: preHold });
+        // anchor a label so pen tweens are timed relative to the deploy moment
+        tl.addLabel('s2deploy');
+        // three penetrators arc out from the bay on staggered trajectories
+        const pens = [
+          { id:'#pen1', sx:80,  puff:'#puff1', t0:0   },
+          { id:'#pen2', sx:0,   puff:'#puff2', t0:0.7 },
+          { id:'#pen3', sx:-80, puff:'#puff3', t0:1.4 },
+        ];
+        pens.forEach(p => {
+          const lbl = 's2deploy+=' + p.t0;
+          const hit = 's2deploy+=' + (p.t0 + 1.6);
+          tl.fromTo(p.id, { autoAlpha:0, x:p.sx, y:-58, rotation:p.sx*0.16, transformOrigin:'50% 100%' },
+                          { autoAlpha:1, x:0, duration:.3 }, lbl);
+          tl.to(p.id, { y:0, duration:1.6, ease:'power2.in' }, lbl);
+          tl.to(p.id, { rotation:0, duration:1.6, ease:'power1.out' }, lbl);
+          // impact puff + settle vibration
+          tl.fromTo(p.puff, { autoAlpha:.9, scale:.4, transformOrigin:'50% 50%' },
+                            { autoAlpha:0, scale:3.0, duration:.65 }, hit);
+          tl.to(p.id, { y:'-=3', duration:.1, yoyo:true, repeat:3 }, hit);
+        });
+        // post-landing hold — observe all three embedded impact sites
+        const postStart  = 3.75;
+        const dimStart   = postStart + postHold;
+        const finalStart = dimStart  + 0.8;
+        tl.to({}, { duration: postHold   }, 's2deploy+=' + postStart);
+        // settle: side penetrators dim, hero (centre) stays bright
+        tl.to(['#pen1','#pen3'], { autoAlpha:.45, duration:.8 }, 's2deploy+=' + dimStart);
+        // final hold on the deployed configuration
+        tl.to({}, { duration: finalHold  }, 's2deploy+=' + finalStart);
+      }
+    },
+    {
+      key:'s3', idx:'03', title:'Thermal drilling descent', status:'DRILLING', tone:'cyan',
+      phase:'DRILL', view:'surface',
+      desc:'The probe’s heated drilling tip melts the surrounding ice and begins a controlled vertical descent through the shell. The goal is to pass the top layers, where radiation destroys organic molecules, and reach protected meltwater meters below the surface.',
+      build(tl) {
+        // push the camera onto the hero probe
+        tl.to(camState, { ...VIEW_PROBE, duration:1.0, ease:'power2.inOut', onUpdate:renderView });
+        // swap the small deployment dart for the detailed probe
+        tl.to('#pen2', { autoAlpha:0, duration:.3 }, '<0.3');
+        tl.fromTo('#probe', { autoAlpha:0 }, { autoAlpha:1, duration:.3 }, '<');
+        tl.fromTo('#tether', { autoAlpha:0 }, { autoAlpha:1, duration:.3 }, '<');
+        // heated tip ignites
+        tl.fromTo('#probeBit', { fill:C.metal }, { fill:C.heat, duration:.4 }, '<');
+        tl.fromTo('#probeHeat', { autoAlpha:0, scale:.4, transformOrigin:'50% 50%' },
+                                { autoAlpha:.9, scale:1, duration:.5 }, '<');
+        tl.fromTo('#meltPool', { autoAlpha:0, scaleX:.3, transformOrigin:'50% 50%' },
+                               { autoAlpha:.8, scaleX:1, duration:.5 }, '<');
+        // descend, melting the channel; depth ticks down
+        const drillDur = Math.max(0.5, STAGE3_SECS * TIME_SCALE - 0.5);
+        tl.to(drillState, { tip:TIP_END, duration:drillDur, ease:'power1.inOut', onUpdate:renderDrill }, '<0.2');
+        tl.to('#probeHeat', { autoAlpha:.5, scale:1.2, duration:drillDur/2, yoyo:true, repeat:1 }, '<');
+      }
+    },
+    {
+      key:'s4', idx:'04', title:'Sample intake', status:'INTAKE', tone:'cyan',
+      phase:'INTAKE', view:'chip',
+      desc:'Meltwater is funneled directly into the microfluidic chip through a 0.5 mm intake port. Mounting the chip on the drill head means water is analyzed the moment it is collected, removing complex transfer steps and minimizing contamination.',
+      build(tl) {
+        // reset chip state so a looped run never shows the last cycle's result
+        tl.set('#chamberGlow', { autoAlpha:0 });
+        tl.set('#chamber', { stroke:C.water });
+        tl.set('#chipFlow', { stroke:C.water });
+        tl.set('.pd', { fill:C.dim });
+        // intake flash at the port
+        tl.fromTo('#meltPool', { scale:1, transformOrigin:'50% 50%' },
+                               { scale:1.3, duration:.4, yoyo:true, repeat:1 });
+        // zoom THROUGH the probe tip, then cross-fade into the chip
+        tl.to(camState, { ...VIEW_TIP, duration:.8, ease:'power2.in', onUpdate:renderView }, '<');
+        tl.to('#worldSurface', { autoAlpha:0, duration:.4 }, '>-0.2');
+        tl.set('#worldChip', { autoAlpha:1 });
+        // chip eases OUT from the tight tip view to a close chip framing (the punch-through)
+        tl.to(camState, { ...VIEW_CHIP, duration:1.1, ease:'power2.out', onUpdate:renderView });
+        tl.to('#chipPhoto', { autoAlpha:1, duration:.5 }, '<0.2');
+        // fluid enters: inlet → through the valve toward the chamber
+        tl.call(() => highlightAt(68, 310, 10));
+        tl.fromTo('#chipHighlight', { autoAlpha:0, scale:.5, transformOrigin:'50% 50%' },
+                                    { autoAlpha:.9, scale:1, duration:.4 }, '<');
+        const len = +els.chipFlow.dataset.len;
+        tl.fromTo('#chipFlow', { autoAlpha:1, strokeDashoffset:len },
+                               { strokeDashoffset:len*0.55, duration:.9, ease:'none' }, '<');
+        tl.fromTo('#chipDrop', { autoAlpha:1, x:0 }, { x:42, duration:.9, ease:'none' }, '<');
+        const s4Hold = Math.max(0, STAGE4_SECS * TIME_SCALE - 3.0);
+        if (s4Hold > 0) tl.to({}, { duration: s4Hold });
+      }
+    },
+    {
+      key:'s5', idx:'05', title:'On-chip analysis', status:'ANALYZING', tone:'cyan',
+      endStatus:'LIFE SIGNATURE', endTone:'bio', phase:'ASSAY', view:'chip',
+      desc:'The sample passes through a nanofilter array to clear debris, then enters a 3.7 mm luciferase reaction chamber holding just 71 picoliters. If ATP is present, the chamber emits a bioluminescent glow captured by six avalanche photodiodes. Electrodes simultaneously measure ion concentration and salinity. ATP is produced only by living systems, strong evidence of biological activity.',
+      build(tl) {
+        const len = +els.chipFlow.dataset.len;
+        // through the nanofilter — debris is trapped
+        tl.call(() => highlightAt(113, 310, 12));
+        tl.fromTo('#chipHighlight', { autoAlpha:.5 }, { autoAlpha:.9, duration:.4, yoyo:true, repeat:1 });
+        tl.fromTo('#debris', { autoAlpha:0 }, { autoAlpha:.9, duration:.4 }, '<');
+        // fluid completes the run into the chamber
+        tl.to('#chipFlow', { strokeDashoffset:len*0.0, duration:1.0, ease:'none' }, '<');
+        tl.to('#chipDrop', { x:144, duration:1.0, ease:'none' }, '<');
+        tl.to('#chipDrop', { autoAlpha:0, duration:.2 });
+        // settle on the luciferase chamber
+        tl.call(() => highlightAt(212, 310, 22));
+        tl.to('#chipHighlight', { autoAlpha:.9, duration:.3 }, '<');
+        // ATP present → bioluminescent flash
+        tl.to('#chamber', { stroke:C.bio, duration:.4 });
+        tl.fromTo('#chamberGlow', { autoAlpha:0, scale:.3, transformOrigin:'50% 50%' },
+                                  { autoAlpha:.95, scale:1, duration:.6 }, '<');
+        tl.call(() => setStatus('LIFE SIGNATURE','bio'));
+        tl.to('#chamberGlow', { autoAlpha:.55, scale:1.3, duration:.7, yoyo:true, repeat:3 }, '<');
+        // photons rise; the photodiode array lights up in sequence
+        tl.fromTo('#photons', { autoAlpha:0 }, { autoAlpha:.9, duration:.4, yoyo:true, repeat:3 }, '<');
+        tl.to('.pd', { fill:C.bio, duration:.25, stagger:.08 }, '<0.1');
+        // ion read traces a small waveform
+        tl.to('#ionWave', { autoAlpha:1, strokeDashoffset:0, duration:1.0, ease:'none' }, '<0.2');
+        const s5Hold = Math.max(0, STAGE5_SECS * TIME_SCALE - 4.9);
+        if (s5Hold > 0) tl.to({}, { duration: s5Hold });
+      }
+    },
+    {
+      key:'s6', idx:'06', title:'Transmit & repeat', status:'TRANSMIT', tone:'cyan',
+      endStatus:'SIGNAL SENT', endTone:'bio', phase:'UPLINK', view:'surface',
+      desc:'The chemical reaction is converted into electrical signals and transmitted wirelessly to the surface lander, then relayed toward Earth. The probe continues drilling deeper and repeats the full process, mapping the chemical profile across the ice shell. With communication delays to Jupiter, the system operates autonomously.',
+      build(tl) {
+        // glow condenses into a data pulse that travels the exit channel out of the chip
+        tl.to('#chipHighlight', { autoAlpha:0, duration:.3 });
+        tl.to('#chamberGlow', { autoAlpha:.4, duration:.3 }, '<');
+        tl.fromTo('#chipSignal', { autoAlpha:1, x:0, y:0 },
+                                 { x:62,  duration:.5, ease:'power1.in' });
+        tl.to('#chipSignal', { y:-60, duration:.4, ease:'power1.inOut' });
+        tl.to('#chipSignal', { x:114, duration:.4, ease:'power1.out' });
+        tl.to('#chipSignal', { autoAlpha:0, duration:.2 });
+        // cross-fade chip → surface (both at the full framing)
+        tl.to('#worldChip', { autoAlpha:0, duration:.5 });
+        tl.fromTo('#worldSurface', { autoAlpha:0 }, { autoAlpha:1, duration:.5 }, '<');
+        tl.set(camState, { ...VIEW_FULL, onComplete:renderView });
+        // pulse rises up the probe, out of the ice, to the lander antenna
+        tl.fromTo('#probeUplink', { autoAlpha:0, scale:.4, transformOrigin:'50% 50%' },
+                                  { autoAlpha:1, scale:1.3, duration:.4 }, '<');
+        tl.fromTo('#signalSurface', { autoAlpha:1, cy:205, cx:200 },
+                                    { cy:118, cx:236, duration:.8, ease:'power1.inOut' }, '<0.1');
+        tl.to('#probeUplink', { autoAlpha:0, duration:.3 }, '<');
+        tl.to('#signalSurface', { autoAlpha:0, duration:.2 });
+        // antenna fires beams toward the relay
+        tl.fromTo('#antenna', { rotation:0, transformOrigin:'88% 100%' },
+                              { rotation:-6, duration:.35, yoyo:true, repeat:1 });
+        tl.fromTo('#beam1', { autoAlpha:0, scale:.3, transformOrigin:'100% 100%' },
+                            { autoAlpha:.9, scale:1, duration:.7, ease:'power1.out' }, '<');
+        tl.fromTo('#beam2', { autoAlpha:0, scale:.3, transformOrigin:'100% 100%' },
+                            { autoAlpha:.7, scale:1, duration:.8, ease:'power1.out' }, '<0.18');
+        tl.fromTo('#beam3', { autoAlpha:0, scale:.3, transformOrigin:'100% 100%' },
+                            { autoAlpha:.5, scale:1, duration:.9, ease:'power1.out' }, '<0.18');
+        tl.call(() => setStatus('SIGNAL SENT','bio'));
+        tl.fromTo('#target', { scale:1, transformOrigin:'50% 50%' },
+                             { scale:1.35, duration:.3, yoyo:true, repeat:1 }, '>-0.3');
+        tl.to(['#beam1','#beam2','#beam3'], { autoAlpha:0, duration:.5 });
+        // resume descent one step deeper, with a loop cue
+        tl.to(camState, { ...VIEW_PROBE, duration:.7, ease:'power2.inOut', onUpdate:renderView }, '<');
+        tl.to(drillState, { tip:TIP_DEEP, duration:.7, ease:'power1.in', onUpdate:renderDrill }, '<');
+        tl.fromTo('#loopCue', { autoAlpha:0, x:-6 }, { autoAlpha:1, x:0, duration:.5 }, '>-0.2');
+        const s6Hold = Math.max(0, STAGE6_SECS * TIME_SCALE - 6.0);
+        if (s6Hold > 0) tl.to({}, { duration: s6Hold });
+      }
+    },
+  ];
+
+  /* =================================================================
+     CONTROLLER  —  one master timeline + auto-run loop
+     ================================================================= */
+  initScene();
+
+  const master = gsap.timeline({ paused:true, onUpdate:updateProgress });
+  master.timeScale(TIME_SCALE);   // run the whole sequence at a calmer pace
+
+  // build the timeline: label + caption-callback + the step's own tweens
+  STEPS.forEach((s, i) => {
+    master.addLabel(s.key);
+    master.call(() => enterStep(i), null, s.key);
+    s.build(master);
+  });
+
+  // build progress dots
+  STEPS.forEach((s, i) => {
+    const d = document.createElement('button');
+    d.className = 'dot';
+    d.setAttribute('role','tab');
+    d.setAttribute('aria-label', `Step ${i + 1}: ${s.title}`);
+    d.addEventListener('click', () => gotoStep(i));
+    els.dots.appendChild(d);
+  });
+  const dotEls = [...els.dots.children];
+
+  const TOTAL = String(STEPS.length).padStart(2,'0');
+  let current = 0;
+  let playing = true;
+  let holdCall = null;
+
+  function enterStep(i) {
+    current = i;
+    const s = STEPS[i];
+    els.idx.textContent = `${s.idx} / ${TOTAL}`;
+    els.title.textContent = s.title;
+    els.desc.textContent = s.desc;
+    setStatus(s.status, s.tone);
+    // drive the Pi: stage 3 (index 2) = drill motor, stage 4 (index 3) = pump
+    setHardware(i === 2, i === 3);
+    dotEls.forEach((d, k) => d.setAttribute('aria-current', k === i ? 'true' : 'false'));
+    // scene tag reflects which world we're in
+    const tag = { orbital:'ORBITAL VIEW', surface:'ICE CROSS-SECTION', chip:'CHIP SCHEMATIC' };
+    els.sceneTagText.textContent = tag[s.view] || 'EXTERIOR VIEW';
+  }
+
+  function updateProgress() {
+    els.progressBar.style.width = (master.progress() * 100).toFixed(1) + '%';
+  }
+
+  function setPlaying(p) {
+    playing = p;
+    els.playToggle.classList.toggle('is-playing', p);
+    els.playToggle.setAttribute('aria-label', p ? 'Pause' : 'Play');
+    if (holdCall) { holdCall.kill(); holdCall = null; }
+    if (p) {
+      if (master.progress() >= 1) master.restart();
+      else master.play();
+    } else {
+      master.pause();
+    }
+  }
+
+  // auto-loop: hold on the final frame, then restart
+  master.eventCallback('onComplete', () => {
+    if (!playing) return;
+    holdCall = gsap.delayedCall(LOOP_HOLD, () => master.restart());
+  });
+
+  function gotoStep(i) {
+    i = (i + STEPS.length) % STEPS.length;   // wrap-around for kiosk
+    if (holdCall) { holdCall.kill(); holdCall = null; }
+    master.seek(STEPS[i].key);
+    // seek updates the state objects but not their DOM renderers — sync them
+    renderDrill();
+    renderView();
+    enterStep(i);
+    if (playing) master.play();
+  }
+
+  /* ---- transport controls ---- */
+  els.playToggle.addEventListener('click', () => setPlaying(!playing));
+  els.prev.addEventListener('click', () => gotoStep(current - 1));
+  els.next.addEventListener('click', () => gotoStep(current + 1));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') gotoStep(current + 1);
+    if (e.key === 'ArrowLeft')  gotoStep(current - 1);
+    if (e.key === ' ') { e.preventDefault(); setPlaying(!playing); }
+  });
+
+  /* ---- scale-to-fit the 1024x600 stage into any viewport ---- */
+  const fit = $('fit');
+  function fitToScreen() {
+    const s = Math.min(window.innerWidth / 1024, window.innerHeight / 600, 1);
+    fit.style.transform = `scale(${s})`;
+  }
+  window.addEventListener('resize', fitToScreen);
+  fitToScreen();
+
+  /* ---- kick off the auto-run ---- */
+  enterStep(0);
+  if (reduce) {
+    // honour reduced motion: show the finished state, no looping
+    master.progress(1);
+    setPlaying(false);
+  } else {
+    setPlaying(true);
+  }
+  </script>
+</body>
+</html>

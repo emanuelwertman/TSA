@@ -1,27 +1,31 @@
 import gpiod
 from time import sleep
 
-# Define the Broadcom (BCM) GPIO numbers
 IN1_PIN = 5
 IN2_PIN = 6
+ENA_PIN = 12
 
 print("Pump On")
 
-# Request access to the main GPIO chip (usually chip 0)
-with gpiod.request_lines(
-    "/dev/gpiochip0",
-    consumer="pump-control",
-    config={
-        IN1_PIN: gpiod.LineSettings(direction=gpiod.Direction.OUTPUT, output_value=gpiod.Value.ACTIVE),
-        IN2_PIN: gpiod.LineSettings(direction=gpiod.Direction.OUTPUT, output_value=gpiod.Value.INACTIVE),
-    },
-) as lines:
+# Open the GPIO chip
+chip = gpiod.Chip('gpiochip0')
 
-    # Note: Software PWM is not natively handled well by raw gpiod.
-    # If your pump requires a full 100% duty cycle to just turn on, 
-    # you can wire the ENA pin directly to a physical 3.3V or 5V pin,
-    # or add ENA to the lines config above as ACTIVE.
+# Get the lines for our pins
+lines = chip.get_lines([IN1_PIN, IN2_PIN, ENA_PIN])
 
+# Request the lines as outputs
+lines.request(consumer="pump-control", type=gpiod.LINE_REQ_DIR_OUT)
+
+try:
+    # Set IN1 to High (1), IN2 to Low (0) for forward
+    # Set ENA to High (1) to enable the motor driver channel
+    lines.set_values([1, 0, 1])
+    
     sleep(15)
 
-print("Done")
+finally:
+    # Turn everything off when done
+    print("Done")
+    lines.set_values([0, 0, 0])
+    lines.release()
+    chip.close()

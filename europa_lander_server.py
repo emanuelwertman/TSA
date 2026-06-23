@@ -57,7 +57,14 @@ class Hardware:
         self._motor_on = False
         self._pump_on = False
         try:
-            from gpiozero import Motor, PWMOutputDevice
+            # Pi 5 (BCM2712 / RP1) requires lgpio — RPi.GPIO is not supported.
+            # Explicitly set the factory before importing any Device subclass so
+            # gpiozero never falls back to a non-working backend.
+            import lgpio  # noqa: F401  — confirms lgpio C library is present
+            from gpiozero.pins.lgpio import LGPIOFactory
+            from gpiozero import Device, Motor, PWMOutputDevice
+            Device.pin_factory = LGPIOFactory()
+            print("[hw] pin factory: lgpio (Pi 5 compatible)")
 
             # Pump on OUT1/OUT2
             self.pump = Motor(forward=5, backward=6)
@@ -69,9 +76,12 @@ class Hardware:
             self.pump_enable.value = 0
             self.tt_enable.value = 0
             print("[hw] gpiozero initialised — driving real GPIO")
-        except Exception as exc:  # ImportError on non-Pi, or no pin factory
+        except Exception as exc:
             self.mock = True
-            print(f"[hw] gpiozero unavailable ({exc!r}) — running in MOCK mode")
+            print(f"[hw] ERROR: {exc!r}")
+            print("[hw] running in MOCK mode — install lgpio to drive real GPIO:")
+            print("[hw]   sudo apt install python3-lgpio   # preferred on Pi OS")
+            print("[hw]   # or: pip3 install lgpio")
 
     def set_motor(self, on: bool):
         with self._lock:

@@ -18,7 +18,7 @@ GPIO.setup(IN2, GPIO.OUT)
 GPIO.setup(ENA, GPIO.OUT)
 
 # Initialize PWM on ENA pin at 100Hz frequency
-pwm = GPIO.PWM(ENA, 1000)
+pwm = GPIO.PWM(ENA, 500)
 pwm.start(0)  # Start with 0% duty cycle (Off)
 
 try:
@@ -31,8 +31,8 @@ try:
     GPIO.output(IN1, GPIO.HIGH)
     GPIO.output(IN2, GPIO.LOW)
     
-    # Run for 15 seconds
-    sleep(15)
+    # Run for 5 seconds
+    sleep(5)
 
 finally:
     # Stop the pump and clean up the pins safely
